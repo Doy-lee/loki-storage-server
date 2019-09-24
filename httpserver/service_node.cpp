@@ -743,8 +743,8 @@ void ServiceNode::ping_peers_tick() {
         if (random_node == our_address_) {
             LOKI_LOG(debug, "Would test our own node, skipping");
         } else {
-            LOKI_LOG(debug, "Selected random node for testing: {}",
-                     (*random_node).pub_key_hex());
+            LOKI_LOG(debug, "Selected random node for testing: {} ({})",
+                     *random_node, (*random_node).pub_key_hex());
             test_reachability(*random_node);
         }
     } else {
@@ -774,7 +774,7 @@ void ServiceNode::ping_peers_tick() {
 
 void ServiceNode::test_reachability(const sn_record_t& sn) {
 
-    LOKI_LOG(debug, "Testing node for reachability {}", sn);
+    LOKI_LOG(debug, "Testing node for reachability {} ({})", sn, sn.pub_key_hex());
 
     auto callback = [this, sn](sn_response_t&& res) {
         this->process_reach_test_response(std::move(res), sn.pub_key_base32z());
@@ -1044,15 +1044,16 @@ void ServiceNode::report_node_reachability(const sn_pub_key_t& sn_pk,
         return;
     }
 
+    const auto& pk_hex = (*sn).pub_key_hex();
     json params;
     params["type"] = "reachability";
-    params["pubkey"] = (*sn).pub_key_hex();
+    params["pubkey"] = pk_hex;
     params["passed"] = reachable;
 
     /// Note that if Lokid restarts, all its reachability records will be
     /// updated to "true".
 
-    auto cb = [this, sn_pk, reachable](const sn_response_t&& res) {
+    auto cb = [this, sn_pk, pk_hex, reachable](const sn_response_t&& res) {
         if (res.error_code != SNodeError::NO_ERROR) {
             LOKI_LOG(warn, "Could not report node status");
             return;
@@ -1083,12 +1084,12 @@ void ServiceNode::report_node_reachability(const sn_pub_key_t& sn_pk,
 
         if (success) {
             if (reachable) {
-                LOKI_LOG(debug, "Successfully reported node as reachable: {}",
-                         sn_pk);
+                LOKI_LOG(debug, "Successfully reported node as reachable: {} ({})",
+                         sn_pk, pk_hex);
                 this->reach_records_.expire(sn_pk);
             } else {
-                LOKI_LOG(debug, "Successfully reported node as unreachable {}",
-                         sn_pk);
+                LOKI_LOG(debug, "Successfully reported node as unreachable {} ({})",
+                         sn_pk, pk_hex);
                 this->reach_records_.set_reported(sn_pk);
             }
         }
