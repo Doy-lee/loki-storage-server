@@ -1,7 +1,4 @@
 #include <catch2/catch.hpp>
-#include <iostream>
-#include <ostream>
-
 #include <oxenss/crypto/channel_encryption.hpp>
 #include <oxenss/crypto/keys.h>
 
