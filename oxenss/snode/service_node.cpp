@@ -650,10 +650,20 @@ void ServiceNode::update_swarms() {
             "rpc.get_service_nodes",
             [this](bool success, std::vector<std::string> data) {
                 updating_swarms_ = false;
-                if (!success || data.size() < 2) {
-                    log::critical(logcat, "Failed to contact local oxend for service node list");
+                if (!success) {
+                    log::critical(logcat, "Failed to contact local oxend for node list, connection failed");
                     return;
                 }
+
+                if (data.size() < 2) {
+                    log::critical(
+                            logcat,
+                            "Failed to contact local oxend for node list. Expected 2 parts, "
+                            "received {}",
+                            data.size());
+                    return;
+                }
+
                 try {
                     std::lock_guard lock{sn_mutex_};
                     block_update bu = parse_swarm_update(data[1]);
