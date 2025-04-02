@@ -1,11 +1,11 @@
 #pragma once
 
-#include <condition_variable>
+#include <atomic>
 #include <chrono>
 #include <filesystem>
+#include <future>
 #include <map>
 #include <memory>
-#include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -82,9 +82,7 @@ constexpr std::string_view to_string(SnodeStatus status) {
 class ServiceNode {
     bool syncing_ = true;
     bool active_ = false;
-    bool got_first_response_ = false;
-    std::condition_variable first_response_cv_;
-    std::mutex first_response_mutex_;
+    std::atomic<bool> got_first_response_ = false;
     bool force_start_ = false;
     std::atomic<bool> shutting_down_ = false;
     hf_revision hardfork_ = {0, 0};
@@ -284,7 +282,7 @@ class ServiceNode {
     void on_oxend_connected();
 
     // Called when oxend notifies us of a new block to update swarm info
-    void update_swarms();
+    void update_swarms(std::promise<bool> *on_completion = nullptr);
 
     server::OMQ& omq_server() { return omq_server_; }
 };

@@ -79,23 +79,40 @@ ServiceNode::ServiceNode(
 }
 
 void ServiceNode::on_oxend_connected() {
+    // This should be the first time we ever trigger a block update from Oxen, i.e. the initial
+    // call to `update_swarms` should not early out which would cause a deadlock on the promise.
+    assert(!updating_swarms_.load());
     auto started = std::chrono::steady_clock::now();
-    update_swarms();
+
+do_initial_update:
+    std::promise<bool> update_swarms_promise;
+    std::future<bool> update_swarms_result = update_swarms_promise.get_future();
+    update_swarms(&update_swarms_promise);
+    for (;;) {
+        std::future_status status = update_swarms_result.wait_for(5s);
+        if (status != std::future_status::ready) {
+            log::warning(logcat, "Still waiting for initial block update from oxend...");
+            continue;
+        }
+
+        bool result = update_swarms_result.get();
+        if (!result)
+            goto do_initial_update;
+
+        log::info(
+                logcat,
+                "Got initial block update from oxend in {} (height {}/{} HF {}.{})",
+                util::short_duration(std::chrono::steady_clock::now() - started),
+                block_height_,
+                block_hash_,
+                hardfork_.first,
+                hardfork_.second);
+        break;
+    }
+
     oxend_ping();
     omq_server_->add_timer([this] { oxend_ping(); }, OXEND_PING_INTERVAL);
     omq_server_->add_timer([this] { ping_peers(); }, reachability_testing::TESTING_TIMER_INTERVAL);
-
-    std::unique_lock lock{first_response_mutex_};
-    while (true) {
-        if (first_response_cv_.wait_for(lock, 5s, [this] { return got_first_response_; })) {
-            log::info(
-                    logcat,
-                    "Got initial block update from oxend in {}",
-                    util::short_duration(std::chrono::steady_clock::now() - started));
-            break;
-        }
-        log::warning(logcat, "Still waiting for initial block update from oxend...");
-    }
 }
 
 template <typename T>
@@ -691,7 +708,7 @@ static void request_for_recent_block_hashes(
             request_cmd);
 }
 
-void ServiceNode::update_swarms() {
+void ServiceNode::update_swarms(std::promise<bool> *on_finish) {
     if (updating_swarms_.exchange(true)) {
         log::debug(logcat, "Swarm update already in progress, not sending another update request");
         return;
@@ -721,10 +738,12 @@ void ServiceNode::update_swarms() {
 
     omq_server_.oxend_request(
             "rpc.get_service_nodes",
-            [this](bool success, std::vector<std::string> data) {
+            [this, on_finish](bool success, std::vector<std::string> data) {
                 updating_swarms_ = false;
                 if (!success) {
                     log::critical(logcat, "Failed to contact local oxend for node list, connection failed");
+                    if (on_finish)
+                        on_finish->set_value(false);
                     return;
                 }
 
@@ -734,21 +753,16 @@ void ServiceNode::update_swarms() {
                             "Failed to contact local oxend for node list. Expected 2 parts, "
                             "received {}",
                             data.size());
+                    if (on_finish)
+                        on_finish->set_value(false);
                     return;
                 }
 
                 try {
                     std::lock_guard lock{sn_mutex_};
                     block_update bu = parse_swarm_update(data[1]);
-                    if (!got_first_response_) {
+                    if (!got_first_response_.exchange(true)) {
                         log::info(logcat, "Got initial swarm information from local Oxend");
-
-                        {
-                            std::lock_guard l{first_response_mutex_};
-                            got_first_response_ = true;
-                        }
-                        first_response_cv_.notify_all();
-
                         static_assert(
                                 server::OMQ::NUM_GENERAL_THREADS == 1,
                                 "If the number of threads ever increases from 1, there's a race "
@@ -805,6 +819,10 @@ void ServiceNode::update_swarms() {
                 } catch (const std::exception& e) {
                     log::error(logcat, "Exception caught on swarm update: {}", e.what());
                 }
+
+                if (on_finish)
+                    on_finish->set_value(true);
+
             },
             params.dump());
 }
