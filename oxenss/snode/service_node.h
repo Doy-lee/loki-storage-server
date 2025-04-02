@@ -1,6 +1,8 @@
 #pragma once
 
+#include <condition_variable>
 #include <chrono>
+#include <filesystem>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -8,10 +10,9 @@
 #include <string>
 #include <string_view>
 
-#include <oxenss/storage/database.hpp>
 #include <oxenss/crypto/keys.h>
-#include <oxenss/server/mqbase.h>
-#include <oxenss/http/http_client.h>
+#include <oxenss/common/message.h>
+#include <oxenss/storage/database.hpp>
 #include "reachability_testing.h"
 #include "stats.h"
 #include "swarm.h"
@@ -19,10 +20,15 @@
 namespace oxenss::server {
 class OMQ;
 class QUIC;
+class MQBase;
 }  // namespace oxenss::server
 
 namespace oxenss::rpc {
 struct OnionRequestMetadata;
+}
+
+namespace oxenss::http {
+class Client;
 }
 
 namespace oxenss::snode {
