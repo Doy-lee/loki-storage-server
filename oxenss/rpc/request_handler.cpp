@@ -865,7 +865,7 @@ void RequestHandler::process_client_req(
                 mine,
                 "deleted",
                 service_node_.get_db().delete_all(
-                        req.pubkey, var::get<namespace_id>(req.msg_namespace)),
+                        req.pubkey, std::get<namespace_id>(req.msg_namespace)),
                 req.b64,
                 ed25519_sk_,
                 req.pubkey.prefixed_hex(),
@@ -1160,7 +1160,7 @@ void RequestHandler::process_client_req(
                 mine,
                 "deleted",
                 service_node_.get_db().delete_by_timestamp(
-                        req.pubkey, var::get<namespace_id>(req.msg_namespace), req.before),
+                        req.pubkey, std::get<namespace_id>(req.msg_namespace), req.before),
                 req.b64,
                 ed25519_sk_,
                 req.pubkey.prefixed_hex(),
@@ -1226,7 +1226,7 @@ void RequestHandler::process_client_req(rpc::expire_all&& req, std::function<voi
                 mine,
                 "updated",
                 service_node_.get_db().update_all_expiries(
-                        req.pubkey, var::get<namespace_id>(req.msg_namespace), req.expiry),
+                        req.pubkey, std::get<namespace_id>(req.msg_namespace), req.expiry),
                 req.b64,
                 ed25519_sk_,
                 req.pubkey.prefixed_hex(),
@@ -1452,7 +1452,7 @@ void RequestHandler::process_client_req(rpc::batch&& req, std::function<void(rpc
             if (done)
                 cb(Response{http::OK, json({{"results", std::move(*subresults)}})});
         };
-        var::visit(
+        std::visit(
                 [this, handler = std::move(handler)](auto&& s) {
                     process_client_req(std::move(s), std::move(handler));
                 },
@@ -1508,7 +1508,7 @@ void RequestHandler::process_client_req(
             cb(Response{http::OK, json({{"results", std::move(manager->subresults)}})});
         } else {
             // subrequest was successful and we're not done, so fire off the next one
-            var::visit(
+            std::visit(
                     [&](auto&& subreq) {
                         process_client_req(std::move(subreq), manager->subresult_callback);
                     },
@@ -1516,7 +1516,7 @@ void RequestHandler::process_client_req(
         }
     };
 
-    var::visit(
+    std::visit(
             [&](auto&& subreq) {
                 process_client_req(std::move(subreq), manager->subresult_callback);
             },
@@ -1546,7 +1546,7 @@ void RequestHandler::process_client_req(rpc::ifelse&& req, std::function<void(rp
         cb(Response{http::OK, std::move(response)});
     };
 
-    var::visit(
+    std::visit(
             [&](auto&& subreq) { process_client_req(std::move(subreq), std::move(wrap_response)); },
             std::move(*subreq));
 }
@@ -1656,7 +1656,7 @@ void RequestHandler::process_onion_req(std::string_view ciphertext, OnionRequest
 
     service_node_.record_onion_request();
 
-    var::visit(
+    std::visit(
             [&](auto&& x) { process_onion_req(std::move(x), std::move(data)); },
             process_ciphertext_v2(channel_cipher_, ciphertext, data.ephem_key, data.enc_type));
 }
