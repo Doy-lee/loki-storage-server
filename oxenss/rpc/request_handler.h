@@ -232,17 +232,6 @@ class RequestHandler {
     void process_client_req(
             std::string_view method, nlohmann::json params, std::function<void(Response)> cb);
 
-    // Processes a swarm test request; if it succeeds the callback is immediately invoked,
-    // otherwise the test is scheduled for retries for some time until it succeeds, fails, or
-    // times out, at which point the callback is invoked to return the result.
-    void process_storage_test_req(
-            uint64_t height,
-            crypto::legacy_pubkey tester,
-            std::string msg_hash_hex,
-            std::function<void(
-                    snode::MessageTestStatus, std::string, std::chrono::steady_clock::duration)>
-                    callback);
-
     // Forwards a request to oxend RPC. `params` should contain:
     // - endpoint -- the name of the rpc endpoint; currently allowed are `ons_resolve` and
     // `get_service_nodes`.
