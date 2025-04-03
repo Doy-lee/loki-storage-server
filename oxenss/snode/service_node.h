@@ -257,7 +257,7 @@ class ServiceNode {
     void on_oxend_connected();
 
     // Called when oxend notifies us of a new block to update swarm info
-    void update_swarms(std::promise<bool> *on_completion = nullptr);
+    void update_swarms(std::promise<bool>* on_completion = nullptr);
 
     server::OMQ& omq_server() { return omq_server_; }
 };
