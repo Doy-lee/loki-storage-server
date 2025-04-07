@@ -110,11 +110,8 @@ namespace {
     template <typename RPC>
     void register_client_rpc_endpoint(RequestHandler::rpc_map& regs) {
         RequestHandler::rpc_handler calls;
-        calls.load_req = [](std::variant<json, oxenc::bt_dict_consumer> params) -> client_request {
-            return std::visit(
-                    [](auto&& params) { return load_request<RPC>(std::move(params)); },
-                    std::move(params));
-        };
+        calls.load_json = load_request<RPC, nlohmann::json>;
+        calls.load_bt = load_request<RPC, oxenc::bt_dict_consumer>;
         calls.http_json = [](RequestHandler& h, json params, std::function<void(Response)> cb) {
             auto req = load_request<RPC>(std::move(params));
             h.process_client_req(std::move(req), std::move(cb));
@@ -1622,56 +1619,6 @@ Response RequestHandler::process_retrieve_all() {
         messages.push_back(json{{"data", std::move(m.data)}, {"pk", m.pubkey.prefixed_hex()}});
 
     return {http::OK, json{{"messages", std::move(messages)}}};
-}
-
-void RequestHandler::process_storage_test_req(
-        uint64_t height,
-        crypto::legacy_pubkey tester,
-        std::string msg_hash_hex,
-        std::function<void(snode::MessageTestStatus, std::string, steady_clock::duration)>
-                callback) {
-    /// TODO: we never actually test that `height` is within any reasonable
-    /// time window (or that it is not repeated multiple times), we should do
-    /// that! This is done implicitly to some degree using
-    /// `block_hashes_cache_`, which holds a limited number of recent blocks
-    /// only and fails if an earlier block is requested
-
-    auto started = steady_clock::now();
-    auto [status, answer] = service_node_.process_storage_test_req(height, tester, msg_hash_hex);
-
-    if (status == snode::MessageTestStatus::RETRY) {
-        // Our first attempt returned a RETRY, so set up a timer to keep retrying
-
-        auto timer = std::make_shared<oxenmq::TimerID>();
-        auto& timer_ref = *timer;
-        service_node_.omq_server()->add_timer(
-                timer_ref,
-                [this,
-                 timer = std::move(timer),
-                 height,
-                 tester,
-                 hash = std::move(msg_hash_hex),
-                 started,
-                 callback = std::move(callback)] {
-                    auto elapsed = steady_clock::now() - started;
-
-                    log::trace(
-                            logcat,
-                            "Performing storage test retry, {} since started",
-                            util::friendly_duration(elapsed));
-
-                    auto [status, answer] =
-                            service_node_.process_storage_test_req(height, tester, hash);
-                    if (status == snode::MessageTestStatus::RETRY && elapsed < TEST_RETRY_PERIOD &&
-                        !service_node_.shutting_down())
-                        return;  // Still retrying so wait for the next call
-                    service_node_.omq_server()->cancel_timer(*timer);
-                    callback(status, std::move(answer), elapsed);
-                },
-                TEST_RETRY_INTERVAL);
-    } else {
-        callback(status, std::move(answer), steady_clock::now() - started);
-    }
 }
 
 Response RequestHandler::wrap_proxy_response(

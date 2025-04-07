@@ -51,8 +51,8 @@ oxend_seckeys get_sn_privkeys(
                                                 (data.empty() ? "no data received" : data[0])};
                                     }
                                     auto r = nlohmann::json::parse(data[1]);
-
-                                    auto pk = r.at("service_node_privkey").get<std::string>();
+                                    auto pk =
+                                            r.value<std::string_view>("service_node_privkey", ""sv);
                                     if (pk.empty())
                                         throw std::runtime_error{
                                                 "main service node private key is empty (perhaps "
@@ -61,10 +61,10 @@ oxend_seckeys get_sn_privkeys(
                                             crypto::legacy_seckey::from_hex(pk),
                                             crypto::ed25519_seckey::from_hex(
                                                     r.at("service_node_ed25519_privkey")
-                                                            .get<std::string>()),
+                                                            .get<std::string_view>()),
                                             crypto::x25519_seckey::from_hex(
                                                     r.at("service_node_x25519_privkey")
-                                                            .get<std::string>())});
+                                                            .get<std::string_view>())});
                                 } catch (...) {
                                     prom.set_exception(std::current_exception());
                                 }
