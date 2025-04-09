@@ -52,13 +52,8 @@ inline constexpr uint64_t TEST_BLOCKS_BUFFER = 4;
 using hf_revision = std::pair<int, int>;
 
 // The earliest hardfork *this* version of storage server will work on:
-inline constexpr hf_revision STORAGE_SERVER_HARDFORK = {19, 3};
+inline constexpr hf_revision STORAGE_SERVER_HARDFORK = {19, 6};
 
-// The hardfork at which multiple-timestamp `expiry` requests start being accepted:
-inline constexpr hf_revision MULTI_EXPIRY_HARDFORK = {19, 4};
-
-// The hardfork at which we start testing QUIC reachability
-inline constexpr hf_revision QUIC_REACHABILITY_TESTING = {19, 4};
 
 class Swarm;
 

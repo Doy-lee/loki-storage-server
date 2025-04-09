@@ -1289,11 +1289,6 @@ void RequestHandler::process_client_req(rpc::expire_msgs&& req, std::function<vo
         expiry.push_back(std::min(now + TTL_MAXIMUM_PRIVATE, exp));
     }
 
-    if (req.expiry.size() > 1 && !service_node_.hf_at_least(snode::MULTI_EXPIRY_HARDFORK))
-        return cb(Response{
-                http::FORBIDDEN,
-                "expire: multi-expiry requests are not yet active on the network"sv});
-
     if (!verify_signature(
                 service_node_.get_db(),
                 req.pubkey,
