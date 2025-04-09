@@ -235,6 +235,7 @@ OMQ::OMQ(
             c.ip = snode::ipv4{info.require<std::string>("ip")};
             c.https_port = info.require<uint16_t>("sh");
             c.omq_quic_port = info.require<uint16_t>("sq");
+            c.version = info.require<std::array<uint16_t, 3>>("vs");
 
             log::debug(logcat,"Received new snode address info from oxend for {}",
                     pk.hex());
