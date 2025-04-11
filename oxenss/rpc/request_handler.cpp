@@ -70,7 +70,7 @@ namespace {
             snodes_json.push_back(json{
                     // Deprecated; use pubkey_legacy instead:
                     {"address", "{}.snode"_format(oxenc::to_base32z(snpk.view()))},
-                    // Deprecated string port for backwards compat; prefer https_port:
+                    // Deprecated string port for backwards compat; prefer port_https:
                     {"port", "{}"_format(ct->https_port)},
 
                     {"pubkey_legacy", snpk.hex()},

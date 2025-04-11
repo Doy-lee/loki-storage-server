@@ -383,26 +383,6 @@ void ServiceNode::send_onion_to_sn(
             omq_server_.encode_onion_data(payload, data));
 }
 
-void ServiceNode::relay_data_reliable(
-        const std::string& blob, const crypto::legacy_pubkey& sn, const contact& ct) const {
-    if (!ct) {
-        // The caller shouldn't be calling this with an uncontactable node!
-        log::error(logcat, "Cannot relay to uncontactable snode {}", sn);
-        return;
-    }
-
-    log::debug(logcat, "Relaying data to: {} (x25519 pubkey {})", sn, ct.pubkey_x25519);
-
-    omq_server_->request(
-            ct.pubkey_x25519.view(),
-            "sn.data",
-            [](bool success, auto&& /*data*/) {
-                if (!success)
-                    log::error(logcat, "Failed to relay batch data: timeout");
-            },
-            blob);
-}
-
 void ServiceNode::record_proxy_request() {
     all_stats_.bump_proxy_requests();
 }
@@ -694,8 +674,9 @@ void ServiceNode::update_swarms(std::promise<bool>* on_finish) {
 }
 
 void ServiceNode::process_snodes_update(std::string_view data) {
-    std::lock_guard lock{sn_mutex_};
     auto maybe_bu = parse_swarm_update(data, our_keys_.pub);
+
+    std::lock_guard lock{sn_mutex_};
 
     if (maybe_bu) {
         log::debug(logcat, "Blockchain updated, rebuilding swarm list");
@@ -1033,8 +1014,19 @@ void ServiceNode::relay_messages(
     for (const auto& sn : snodes) {
         auto ct = network_.contacts.find(sn);
         if (ct && *ct) {
-            for (auto& batch : batches)
-                relay_data_reliable(batch, sn, *ct);
+            for (auto& batch : batches) {
+                log::debug(
+                        logcat, "Relaying data to: {} (x25519 pubkey {})", sn, ct->pubkey_x25519);
+
+                omq_server_->request(
+                        ct->pubkey_x25519.view(),
+                        "sn.data",
+                        [](bool success, auto&& /*data*/) {
+                            if (!success)
+                                log::error(logcat, "Failed to relay batch data: timeout");
+                        },
+                        batch);
+            }
         } else {
             log::warning(
                     logcat,
