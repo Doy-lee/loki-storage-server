@@ -3,6 +3,7 @@
 #include <oxenss/crypto/channel_encryption.hpp>
 #include "client_rpc_endpoints.h"
 #include "onion_processing.h"
+#include "oxenss/snode/contacts.h"
 #include <oxenc/bt_serialize.h>
 #include <oxenss/crypto/keys.h>
 #include <oxenss/snode/service_node.h>
@@ -147,6 +148,9 @@ struct OnionRequestMetadata {
 class RequestHandler {
 
     snode::ServiceNode& service_node_;
+    const snode::Network& network_{service_node_.network()};
+    const snode::Swarm& swarm_{service_node_.swarm()};
+    const snode::Contacts& contacts_{service_node_.contacts()};
     const crypto::ChannelEncryption& channel_cipher_;
     const crypto::ed25519_seckey ed25519_sk_;
     std::weak_ptr<http::Client> http_;

@@ -1,21 +1,15 @@
 #pragma once
-#include "utils.h"
 #include "mqbase.h"
+#include "../crypto/keys.h"
 
-#include <cstdint>
 #include <memory>
-#include <shared_mutex>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <vector>
 
 #include <nlohmann/json_fwd.hpp>
 #include <oxenc/bt_serialize.h>
 #include <oxenmq/oxenmq.h>
-
-#include "../common/message.h"
-#include "../snode/sn_record.h"
 
 namespace oxenss {
 
@@ -40,6 +34,10 @@ class OMQ : public MQBase {
 
     // Get node's address
     std::string peer_lookup(std::string_view pubkey_bin) const;
+
+    // Invoked by fellow swarm members to ask if we are ready to transfer data (via sn.data).  Once
+    // this returns OK, one or more sn.data follow with the actual data transfer.
+    void handle_sn_data_ready(oxenmq::Message& message);
 
     // Handle Session data coming from peer SN
     void handle_sn_data(oxenmq::Message& message);
@@ -182,8 +180,7 @@ class OMQ : public MQBase {
     void connect_oxend(const oxenmq::address& oxend_rpc);
 
   public:
-    OMQ(const snode::sn_record& me,
-        const crypto::x25519_seckey& privkey,
+    OMQ(const crypto::x25519_keypair& keys,
         const std::vector<crypto::x25519_pubkey>& stats_access_keys_hex);
 
     // Initialize oxenmq; return a future that completes once we have connected to and

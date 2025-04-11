@@ -4,18 +4,20 @@
 #include <chrono>
 #include <filesystem>
 #include <future>
-#include <map>
 #include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include <oxenss/crypto/keys.h>
 #include <oxenss/common/message.h>
 #include <oxenss/storage/database.hpp>
+#include "network.h"
+#include "swarm.h"
 #include "reachability_testing.h"
 #include "stats.h"
-#include "swarm.h"
+#include "contacts.h"
 
 namespace oxenss::server {
 class OMQ;
@@ -50,20 +52,16 @@ inline constexpr uint64_t TEST_BLOCKS_BUFFER = 4;
 using hf_revision = std::pair<int, int>;
 
 // The earliest hardfork *this* version of storage server will work on:
-inline constexpr hf_revision STORAGE_SERVER_HARDFORK = {19, 3};
+inline constexpr hf_revision STORAGE_SERVER_HARDFORK = {19, 6};
 
-// The hardfork at which multiple-timestamp `expiry` requests start being accepted:
-inline constexpr hf_revision MULTI_EXPIRY_HARDFORK = {19, 4};
-
-// The hardfork at which we start testing QUIC reachability
-inline constexpr hf_revision QUIC_REACHABILITY_TESTING = {19, 4};
+// The storage server version at which initial handshaking is supported before attempting a swarm
+// message transfer.
+inline constexpr std::array<uint16_t, 3> NEW_SWARM_MEMBER_HANDSHAKE_VERSION = {2, 10, 0};
 
 class Swarm;
 
 /// WRONG_REQ - request was ignored as not valid (e.g. incorrect tester)
 enum class MessageTestStatus { SUCCESS, RETRY, ERROR, WRONG_REQ };
-
-enum class SnodeStatus { UNKNOWN, UNSTAKED, DECOMMISSIONED, ACTIVE };
 
 constexpr std::string_view to_string(SnodeStatus status) {
     switch (status) {
@@ -86,14 +84,16 @@ class ServiceNode {
     uint64_t block_height_ = 0;
     uint64_t target_height_ = 0;
     std::string block_hash_;
-    std::unique_ptr<Swarm> swarm_;
     std::unique_ptr<Database> db_;
     std::weak_ptr<http::Client> http_;
 
     SnodeStatus status_ = SnodeStatus::UNKNOWN;
 
-    const sn_record our_address_;
-    const crypto::legacy_seckey our_seckey_;
+    const crypto::legacy_keypair our_keys_;
+    const contact our_contact_;
+
+    Network network_;
+    Swarm swarm_{network_, our_keys_.pub};
 
     server::OMQ& omq_server_;
     std::vector<server::MQBase*> mq_servers_;
@@ -117,26 +117,34 @@ class ServiceNode {
     // Save multiple messages to the database at once (i.e. in a single transaction)
     void save_bulk(const std::vector<message>& msgs);
 
+    void process_snodes_update(std::string_view data);
+
     void on_bootstrap_update(block_update&& bu);
 
-    void on_swarm_update(block_update&& bu);
+    void on_snodes_update(block_update&& bu);
 
-    void bootstrap_data();
+    // Called periodically to attempt to initiate transfers to new snode members
+    void check_new_members();
 
-    void bootstrap_swarms(const std::vector<swarm_id_t>& swarms = {}) const;
+    // Called if our oxend looks like it is missing lots of records when we first get data from it
+    // to load initial data (especially contact info) from the bootstrap nodes.
+    void bootstrap_fallback();
+
+    void bootstrap_swarms(const std::set<swarm_id_t>& swarms = {}) const;
 
     /// Distribute all our data to where it belongs
     /// (called when our old node got dissolved)
     void salvage_data() const;  // mutex not needed
 
-    /// Reliably push message/batch to a service node
+    /// Reliably push message/batch to a service node.  The node must be contactable!
     void relay_data_reliable(
             const std::string& blob,
-            const sn_record& address) const;  // mutex not needed
+            const crypto::legacy_pubkey& snpk,
+            const contact& ct) const;  // mutex not needed
 
     void relay_messages(
             const std::vector<message>& msgs,
-            const std::vector<sn_record>& snodes) const;  // mutex not needed
+            const std::set<crypto::legacy_pubkey>& snodes) const;  // mutex not needed
 
     // Conducts any ping peer tests that are due; (this is designed to be called frequently and
     // does nothing if there are no tests currently due).
@@ -149,22 +157,32 @@ class ServiceNode {
     void initiate_peer_test();
 
     // Initiate node ping tests
-    void test_reachability(const sn_record& sn, int previous_failures);
+    void test_reachability(const crypto::legacy_pubkey& sn, int previous_failures);
 
     // Reports node reachability result to oxend and, if a failure, queues the node for
     // retesting.
-    void report_reachability(const sn_record& sn, bool reachable, int previous_failures);
+    void report_reachability(
+            const crypto::legacy_pubkey& sn, bool reachable, int previous_failures);
 
   public:
     ServiceNode(
-            sn_record address,
-            const crypto::legacy_seckey& skey,
+            const crypto::legacy_keypair& keys,
+            const contact& contact,
             server::OMQ& omq_server,
             const std::filesystem::path& db_location,
             bool force_start);
 
     Database& get_db() { return *db_; }
     const Database& get_db() const { return *db_; }
+
+    const Network& network() { return network_; }
+
+    const Swarm& swarm() { return swarm_; }
+
+    Contacts& contacts() { return network_.contacts; }
+    const Contacts& contacts() const { return network_.contacts; }
+
+    const contact& own_address() { return our_contact_; }
 
     // Adds a MQ server, i.e. QUIC.  The OMQ server is added automatically during construction and
     // should not be added.
@@ -174,7 +192,7 @@ class ServiceNode {
     void set_http_client(std::weak_ptr<http::Client> client) { http_ = std::move(client); }
 
     // Return info about this node as it is advertised to other nodes
-    const sn_record& own_address() { return our_address_; }
+    const crypto::legacy_pubkey& own_pubkey() const { return our_keys_.pub; }
 
     // Record the time of our last being tested over omq/https
     void update_last_ping(ReachType type);
@@ -187,10 +205,13 @@ class ServiceNode {
 
     /// Sends an onion request to the next SS
     void send_onion_to_sn(
-            const sn_record& sn,
+            const contact& ct,
             std::string_view payload,
             rpc::OnionRequestMetadata&& data,
             std::function<void(bool success, std::vector<std::string> data)> cb) const;
+
+    // Returns true if the given x pubkey is recognized as one of our current swarm members
+    bool is_swarm_peer(const crypto::x25519_pubkey& xpk);
 
     const hf_revision& hf() const { return hardfork_; }
 
@@ -202,8 +223,8 @@ class ServiceNode {
     // server is fully initialized (and not trying to shut down), the service node is active and
     // assigned to a swarm and is not syncing.
     //
-    // Teturns false and (if `reason` is non-nullptr) sets a reason string during initialization
-    // and while shutting down.
+    // Returns false and, if `reason` is non-nullptr, sets a reason string during initialization and
+    // while shutting down.
     //
     // If this ServiceNode was created with force_start enabled then this function always
     // returns true (except when shutting down); the reason string is still set (when non-null)
@@ -228,13 +249,7 @@ class ServiceNode {
             std::chrono::system_clock::time_point* expiry = nullptr);
 
     /// Process incoming blob of messages: add to DB if new
-    void process_push_batch(const std::string& blob);
-
-    bool is_pubkey_for_us(const user_pubkey& pk) const;
-
-    std::optional<SwarmInfo> get_swarm(const user_pubkey& pk) const;
-
-    std::vector<sn_record> get_swarm_peers() const;
+    void process_push_batch(std::string_view blob, std::string_view sender);
 
     // Stats for session clients that want to know the version number
     std::string get_stats_for_session_client() const;
@@ -243,18 +258,15 @@ class ServiceNode {
 
     std::string get_status_line() const;
 
-    template <typename PubKey>
-    std::optional<sn_record> find_node(const PubKey& pk) const {
-        std::lock_guard guard{sn_mutex_};
-        if (swarm_)
-            return swarm_->find_node(pk);
-        return std::nullopt;
-    }
-
     // Called once we have established the initial connection to our local oxend to set up
     // initial data and timers that rely on an oxend connection.  This blocks until we get an
     // initial service node block update back from oxend.
     void on_oxend_connected();
+
+    // Parses the result of a `get_service_nodes` oxend rpc request, loading the service node state
+    // into our contact details and returning a "block_update" struct containing various details of
+    // the update.  Returns a nullopt if the RPC response indicates that nothing has changed.
+    std::optional<block_update> update_snodes(std::string_view response_body);
 
     // Called when oxend notifies us of a new block to update swarm info
     void update_swarms(std::promise<bool>* on_completion = nullptr);
