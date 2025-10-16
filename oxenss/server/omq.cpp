@@ -90,11 +90,16 @@ void OMQ::handle_onion_request(
         oxenmq::Message::DeferredSend send) {
     data.cb = [send](rpc::Response res) {
 #ifndef NDEBUG
-        log::trace(logcat, "on response: {}...", to_string(res).substr(0, 100));
+        log::trace(logcat, "on response: {}...", debug_string(res).substr(0, 100));
 #endif
 
         if (auto* js = std::get_if<nlohmann::json>(&res.body))
             send.reply(std::to_string(res.status.first), js->dump());
+        else if (auto* binary = std::get_if<std::span<const std::byte>>(&res.body))
+            send.reply(
+                    std::to_string(res.status.first),
+                    std::string_view{
+                            reinterpret_cast<const char*>(binary->data()), binary->size()});
         else
             send.reply(std::to_string(res.status.first), view_body(res));
     };
