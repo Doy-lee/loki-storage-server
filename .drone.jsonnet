@@ -8,6 +8,8 @@ local default_deps_base = [
   'libsqlite3-dev',
   'libssl-dev',
   'libsystemd-dev',
+  'libngtcp2-dev',
+  'libngtcp2-crypto-gnutls-dev',
   'make',
   'pkg-config',
 ];
