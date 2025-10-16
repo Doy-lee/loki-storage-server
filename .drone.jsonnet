@@ -8,6 +8,8 @@ local default_deps_base = [
   'libsqlite3-dev',
   'libssl-dev',
   'libsystemd-dev',
+  'libngtcp2-dev',
+  'libngtcp2-crypto-gnutls-dev',
   'make',
   'pkg-config',
 ];
@@ -29,24 +31,6 @@ local kitware_repo(distro) = [
   'curl -sSL https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | gpg --dearmor - >/usr/share/keyrings/kitware-archive-keyring.gpg',
   'echo "deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/ubuntu/ ' + distro + ' main" >/etc/apt/sources.list.d/kitware.list',
   'eatmydata ' + apt_get_quiet + ' update',
-];
-
-local local_gnutls(jobs=6, prefix='/usr/local') = [
-  apt_get_quiet + ' install -y curl ca-certificates',
-  'curl -sSL https://ftp.gnu.org/gnu/nettle/nettle-3.9.1.tar.gz | tar xfz -',
-  'curl -sSL https://www.gnupg.org/ftp/gcrypt/gnutls/v3.8/gnutls-3.8.0.tar.xz | tar xfJ -',
-  'export PKG_CONFIG_PATH=' + prefix + '/lib/pkgconfig:' + prefix + '/lib64/pkgconfig',
-  'export LD_LIBRARY_PATH=' + prefix + '/lib:' + prefix + '/lib64',
-  'cd nettle-3.9.1',
-  './configure --prefix=' + prefix + ' CC="ccache gcc"',
-  'make -j' + jobs,
-  'make install',
-  'cd ..',
-  'cd gnutls-3.8.0',
-  './configure --prefix=' + prefix + ' --with-included-libtasn1 --with-included-unistring --without-p11-kit  --disable-libdane --disable-cxx --without-tpm --without-tpm2 CC="ccache gcc"',
-  'make -j' + jobs,
-  'make install',
-  'cd ..',
 ];
 
 local debian_backports(distro, pkgs) = [
@@ -121,7 +105,7 @@ local debian_pipeline(name,
 local clang(version, lto=false) = debian_pipeline(
   'Debian sid/clang-' + version + ' (amd64)',
   docker_base + 'debian-sid-clang',
-  deps=['clang-' + version] + default_deps_nocxx,
+  deps=['clang-' + version, 'clang-tools-' + version] + default_deps_nocxx,
   cmake_extra='-DCMAKE_C_COMPILER=clang-' + version + ' -DCMAKE_CXX_COMPILER=clang++-' + version + ' ',
   lto=lto
 );
@@ -199,12 +183,13 @@ local static_check_and_upload = [
   debian_pipeline('Debian Debug (amd64)', docker_base + 'debian-sid', build_type='Debug'),
   clang(17, lto=true),
   debian_pipeline('Debian stable (i386)', docker_base + 'debian-stable/i386', werror=false),
-  debian_pipeline('Ubuntu LTS (amd64)', docker_base + 'ubuntu-lts'),
+  debian_pipeline('Ubuntu LTS (amd64)', docker_base + 'ubuntu-lts', oxen_repo=true),
   debian_pipeline('Ubuntu latest (amd64)', docker_base + 'ubuntu-rolling'),
   debian_pipeline('Debian 11 bullseye (amd64)',
                   docker_base + 'debian-bullseye',
                   deps=default_deps_base,
-                  extra_setup=local_gnutls() + debian_backports('bullseye', ['cmake']),
+                  oxen_repo=true,
+                  extra_setup=kitware_repo('focal'),
                   cmake_extra='-DDOWNLOAD_SODIUM=ON'),
 
   // ARM builds (ARM64 and armhf)

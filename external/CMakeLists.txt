@@ -60,12 +60,12 @@ macro(system_or_submodule BIGNAME smallname pkgconf subdir)
   endif()
 endmacro()
 
-system_or_submodule(OXENC oxenc liboxenc>=1.4.0 oxenc)
+system_or_submodule(OXENC oxenc liboxenc>=1.5.0 oxenc)
 
 set(LIBQUIC_BUILD_TESTS OFF CACHE BOOL "")
-system_or_submodule(OXENQUIC quic liboxenquic>=1.5.0 oxen-libquic)
+system_or_submodule(OXENQUIC quic liboxenquic>=1.6.0 oxen-libquic)
 
-system_or_submodule(OXENMQ oxenmq liboxenmq>=1.2.22 oxen-mq)
+system_or_submodule(OXENMQ oxenmq liboxenmq>=1.3.0 oxen-mq)
 set(JSON_MultipleHeaders ON CACHE BOOL "") # Allows multi-header nlohmann use
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     set(JSON_Diagnostics ON CACHE BOOL "")

@@ -1,5 +1,4 @@
 #include "omq.h"
-#include "omq_logger.h"
 
 #include <oxenss/crypto/channel_encryption.hpp>
 #include <oxenmq/auth.h>
@@ -178,10 +177,8 @@ OMQ::OMQ(
         const std::vector<crypto::x25519_pubkey>& stats_access_keys) :
         omq_{std::string{keys.pub.view()},
              std::string{keys.sec.view()},
-             true,                                         // is service node
-             [this](auto pk) { return peer_lookup(pk); },  // SN-by-key lookup func
-             omq_logger,
-             oxenmq::LogLevel::info} {
+             /*service_node=*/true,
+             /*sn_lookup=*/[this](auto pk) { return peer_lookup(pk); }} {
     for (const auto& key : stats_access_keys)
         stats_access_keys_.emplace(key.view());
 
