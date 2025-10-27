@@ -79,14 +79,6 @@ int main(int argc, char* argv[]) {
     // Always print version for the logs
     log::info(logcat, "{}", STORAGE_SERVER_VERSION_INFO);
 
-    if (options.ip == "127.0.0.1") {
-        log::critical(
-                logcat,
-                "Tried to bind oxen-storage to localhost, please bind "
-                "to outward facing address");
-        return EXIT_FAILURE;
-    }
-
     log::info(logcat, "Setting log level to {}", options.log_level);
     log::info(logcat, "Setting database location to {}", util::to_sv(options.data_dir.u8string()));
     log::info(logcat, "Connecting to oxend @ {}", options.oxend_omq_rpc);
@@ -171,7 +163,7 @@ int main(int argc, char* argv[]) {
                 service_node,
                 request_handler,
                 rate_limiter,
-                {{options.ip, options.https_port, true}},
+                {{"0.0.0.0", options.https_port, true}, {"::", options.https_port, true}},
                 ssl_cert,
                 ssl_key,
                 ssl_dh,
@@ -181,11 +173,13 @@ int main(int argc, char* argv[]) {
                 service_node,
                 request_handler,
                 rate_limiter,
-                oxen::quic::Address{options.ip, options.omq_quic_port},
+                std::array{
+                        oxen::quic::Address{"0.0.0.0", options.omq_quic_port},
+                        oxen::quic::Address{"::", options.omq_quic_port}},
                 ed_keys.sec);
         service_node.register_mq_server(quic.get());
 
-        auto http_client = std::make_shared<http::Client>(quic->loop());
+        auto http_client = std::make_shared<http::Client>(quic->loop);
         service_node.set_http_client(http_client);
         request_handler.set_http_client(http_client);
 
@@ -217,7 +211,8 @@ int main(int argc, char* argv[]) {
             std::this_thread::sleep_for(100ms);
 
         log::warning(logcat, "Received signal {}; shutting down...", signalled.load());
-        http_client.reset();  // Kills outgoing requests and prevents new ones
+        http_client.reset();  // Kills outgoing requests and prevents new ones.  Also depends on
+                              // `quic`'s event loop so *must* be destroyed before `quic`.
         service_node.shutdown();
         log::info(logcat, "Stopping https server");
         https_server.shutdown(true);
