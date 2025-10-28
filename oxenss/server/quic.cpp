@@ -53,7 +53,7 @@ QUIC::QUIC(
     for (auto& a : bind) {
         endpoints.push_back(quic::Endpoint::endpoint(
                 loop, a, make_endpoint_static_secret(sk), quic::opt::alpns{ALPN}));
-        if (!reach_ep && a.is_ipv4())
+        if (!reach_ep && (a.is_ipv4() || (a.is_any_addr() && a.dual_stack)))
             reach_ep = endpoints.back().get();
     }
 
@@ -104,7 +104,9 @@ void QUIC::handle_ping(quic::message msg) {
 
 void QUIC::handle_request(quic::message msg, size_t ep_idx) {
     auto& omq = *service_node_->omq_server();
-    auto remote_host = msg.stream()->get_conn()->remote().host();
+    auto remote_host = msg.stream()->get_conn()->remote();
+    auto remote_ip =
+            (remote_host.is_ipv4() ? remote_host.mapped_ipv4_as_ipv6() : remote_host).to_ipv6();
 
     auto name = msg.endpoint();
     if (!(name == "snode_ping" || name == "monitor" || name == "onion_req" ||
@@ -117,8 +119,8 @@ void QUIC::handle_request(quic::message msg, size_t ep_idx) {
     omq.inject_task(
             "quic",
             "quic:{}"_format(msg.endpoint()),
-            remote_host,
-            [this, msg, remote_host, ep_idx] {
+            remote_host.host(),
+            [this, msg, remote_ip, ep_idx] {
                 auto name = msg.endpoint();
 
                 if (name == "snode_ping")
@@ -133,7 +135,7 @@ void QUIC::handle_request(quic::message msg, size_t ep_idx) {
                 handle_client_rpc(
                         name,
                         msg.body(),
-                        remote_host,
+                        remote_ip,
                         [msg](http::response_code code, std::string_view res_body) {
                             if (code.first == http::OK.first)
                                 msg.respond(res_body);

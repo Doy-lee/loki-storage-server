@@ -159,11 +159,28 @@ int main(int argc, char* argv[]) {
 
         rpc::RateLimiter rate_limiter{*oxenmq_server};
 
+        std::vector<std::tuple<std::string, uint16_t, bool>> https_bind;
+        std::vector<oxen::quic::Address> quic_bind;
+#ifdef IPV6_V6ONLY
+        // If this define is set then listen in dual stack mode.  uWebSockets doesn't give us any
+        // way to disable this; for quic it's a flag on the address object.
+        https_bind.emplace_back("::", options.https_port, true);
+        quic_bind.emplace_back("::", options.omq_quic_port);
+        quic_bind.back().dual_stack = true;
+#else
+        https_bind.emplace_back("0.0.0.0", options.https_port, true);
+        https_bind.emplace_back("::", options.https_port, true);
+
+        quic_bind.emplace_back("0.0.0.0", options.omq_quic_port);
+        quic_bind.emplace_back("::", options.omq_quic_port);
+        quic_bind.back().dual_stack = false;
+#endif
+
         server::HTTPS https_server{
                 service_node,
                 request_handler,
                 rate_limiter,
-                {{"0.0.0.0", options.https_port, true}, {"::", options.https_port, true}},
+                std::move(https_bind),
                 ssl_cert,
                 ssl_key,
                 ssl_dh,
@@ -173,9 +190,7 @@ int main(int argc, char* argv[]) {
                 service_node,
                 request_handler,
                 rate_limiter,
-                std::array{
-                        oxen::quic::Address{"0.0.0.0", options.omq_quic_port},
-                        oxen::quic::Address{"::", options.omq_quic_port}},
+                std::move(quic_bind),
                 ed_keys.sec);
         service_node.register_mq_server(quic.get());
 
