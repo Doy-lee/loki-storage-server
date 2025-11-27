@@ -187,11 +187,7 @@ int main(int argc, char* argv[]) {
                 l_keys};
 
         auto quic = std::make_unique<server::QUIC>(
-                service_node,
-                request_handler,
-                rate_limiter,
-                std::move(quic_bind),
-                ed_keys.sec);
+                service_node, request_handler, rate_limiter, std::move(quic_bind), ed_keys.sec);
         service_node.register_mq_server(quic.get());
 
         auto http_client = std::make_shared<http::Client>(quic->loop);

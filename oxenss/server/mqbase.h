@@ -32,7 +32,8 @@ struct message;
 namespace oxenss::server {
 
 // For oxenmq: the connection id; for quic: pair of {endpoint_index, endpoint_connectionid}
-using connection_id = std::variant<oxenmq::ConnectionID, std::pair<size_t, oxen::quic::ConnectionID>>;
+using connection_id =
+        std::variant<oxenmq::ConnectionID, std::pair<size_t, oxen::quic::ConnectionID>>;
 
 using namespace std::literals;
 
