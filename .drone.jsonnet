@@ -195,7 +195,7 @@ local static_check_and_upload = [
   // Various debian builds
   debian_pipeline('Debian (amd64)', docker_base + 'debian-sid', lto=true),
   debian_pipeline('Debian Debug (amd64)', docker_base + 'debian-sid', build_type='Debug'),
-  clang(17, lto=true),
+  clang(19, lto=true),
   debian_pipeline('Debian stable (i386)', docker_base + 'debian-stable/i386', werror=false),
   debian_pipeline('Ubuntu LTS (amd64)', docker_base + 'ubuntu-lts', oxen_repo=true),
   debian_pipeline('Ubuntu latest (amd64)', docker_base + 'ubuntu-rolling'),
